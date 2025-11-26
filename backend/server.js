@@ -22,6 +22,13 @@ let portfolio = [];
 const priceCache = new Map();
 const CACHE_TTL = 30000; // 30 seconds
 
+// Coin list cache with 1-hour TTL
+let coinListCache = {
+  data: new Map(), // Maps symbol -> coin data
+  timestamp: 0
+};
+const COIN_LIST_CACHE_TTL = 3600000; // 1 hour
+
 // File path for persistence
 const PORTFOLIO_FILE = path.join(__dirname, 'portfolio.json');
 
@@ -50,7 +57,7 @@ async function savePortfolio() {
   }
 }
 
-// CoinGecko API mapping for common symbols
+// CoinGecko API mapping for common symbols (fallback)
 const symbolToId = {
   'BTC': 'bitcoin',
   'ETH': 'ethereum',
@@ -70,6 +77,74 @@ const symbolToId = {
   'USDC': 'usd-coin'
 };
 
+// Fetch and cache full coin list from CoinGecko
+async function fetchCoinList() {
+  // Check cache first
+  if (coinListCache.data.size > 0 && Date.now() - coinListCache.timestamp < COIN_LIST_CACHE_TTL) {
+    return coinListCache.data;
+  }
+
+  try {
+    const response = await axios.get(
+      'https://api.coingecko.com/api/v3/coins/markets?vs_currency=php&per_page=250&page=1',
+      {
+        timeout: 15000
+      }
+    );
+
+    const coinMap = new Map();
+    
+    // Map each coin by its symbol
+    response.data.forEach(coin => {
+      if (coin.symbol) {
+        const upperSymbol = coin.symbol.toUpperCase();
+        coinMap.set(upperSymbol, {
+          id: coin.id,
+          symbol: upperSymbol,
+          name: coin.name,
+          image: coin.image,
+          current_price: coin.current_price,
+          price_change_percentage_24h: coin.price_change_percentage_24h || 0
+        });
+      }
+    });
+
+    // Update cache
+    coinListCache = {
+      data: coinMap,
+      timestamp: Date.now()
+    };
+
+    console.log(`✅ Cached ${coinMap.size} coins`);
+    return coinMap;
+
+  } catch (error) {
+    console.error('Error fetching coin list:', error.message);
+    // Return existing cache or empty map
+    return coinListCache.data.size > 0 ? coinListCache.data : new Map();
+  }
+}
+
+// Get coin ID from symbol (dynamic lookup)
+async function getCoinId(symbol) {
+  const upperSymbol = symbol.toUpperCase();
+  
+  // Try fetching from dynamic coin list
+  const coinList = await fetchCoinList();
+  
+  if (coinList.has(upperSymbol)) {
+    return coinList.get(upperSymbol).id;
+  }
+  
+  // Fallback to hardcoded mapping
+  if (symbolToId[upperSymbol]) {
+    return symbolToId[upperSymbol];
+  }
+  
+  // Last resort: use lowercase symbol as ID
+  return symbol.toLowerCase();
+}
+
 // Fetch price from CoinGecko with caching
 async function fetchPrice(symbol) {
   const upperSymbol = symbol.toUpperCase();
@@ -81,8 +156,8 @@ async function fetchPrice(symbol) {
     return cached.data;
   }
 
-  // Map symbol to CoinGecko ID
-  const coinId = symbolToId[upperSymbol] || symbol.toLowerCase();
+  // Get coin ID dynamically
+  const coinId = await getCoinId(symbol);
 
   try {
     // Fetch from CoinGecko API (free tier, no API key needed)
@@ -119,6 +194,22 @@ async function fetchPrice(symbol) {
 }
 
 // Routes
+
+// GET /coins - Get list of available coins
+app.get('/coins', async (req, res) => {
+  try {
+    const coinList = await fetchCoinList();
+    const coins = Array.from(coinList.values()).map(coin => ({
+      symbol: coin.symbol,
+      name: coin.name,
+      id: coin.id,
+      image: coin.image
+    }));
+    res.json(coins);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch coin list' });
+  }
+});
 
 // GET /price/:symbol - Get current price for a token
 app.get('/price/:symbol', async (req, res) => {
@@ -195,5 +286,6 @@ app.delete('/portfolio/:symbol', async (req, res) => {
 // Start server
 app.listen(PORT, async () => {
   await loadPortfolio();
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  // Preload coin list on startup
+  await fetchCoinList();
 });
