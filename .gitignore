@@ -1,0 +1,19 @@
+# Backend
+backend/node_modules/
+backend/portfolio.json
+backend/*.log
+
+# Frontend  
+frontend/node_modules/
+frontend/build/
+frontend/.env
+frontend/*.log
+
+# General
+*.log
+.DS_Store
+.env
+.vscode/
+*.swp
+*.swo
+*~
