@@ -143,7 +143,7 @@ The app will automatically open at http://localhost:3000
 
 ## API Endpoints
 
-Your backend server provides these endpoints:
+The backend server provides these endpoints:
 
 ### 1. Get Available Coins
 ```http
