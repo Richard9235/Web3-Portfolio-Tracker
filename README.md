@@ -490,19 +490,6 @@ The app uses a navy, coral, and gold theme. To customize:
 
 ---
 
-## Future Enhancements
-
-Potential features to add:
-- [ ] Historical price charts
-- [ ] Multiple currency support (USD, EUR, etc.)
-- [ ] Export portfolio to CSV
-- [ ] Price alerts/notifications
-- [ ] Multiple portfolios
-- [ ] Dark/light theme toggle
-- [ ] Mobile app version
-
----
-
 ## License
 
 MIT License - Feel free to use and modify for your projects!
@@ -521,8 +508,7 @@ Built as part of the OJT project for Bitskwela
 
 Having issues? Check:
 1. [Troubleshooting section](#-troubleshooting) above
-2. `TROUBLESHOOTING.md` file for detailed help
-3. Make sure both backend AND frontend are running
+2. Make sure both backend AND frontend are running
 
 ---
  
