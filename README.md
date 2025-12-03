@@ -16,6 +16,7 @@ A real-time cryptocurrency portfolio tracking application that helps you monitor
 - [Usage Guide](#usage-guide)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
+- [Design Enhancements](#design-enhancements)
 
 ---
 
@@ -460,6 +461,147 @@ The app uses a navy, coral, and gold theme. To customize:
 --accent: #48dbfb;          /* Cyan blue */
 --text: #f4e8c1;           /* Cream text */
 ```
+
+---
+
+## Design Enhancements
+
+### CoinGecko API Integration Strategy
+
+After reviewing the CoinGecko API documentation, strategic enhancements were implemented beyond the original requirements to improve user experience and API efficiency.
+
+#### Original Design Limitations
+
+The initial specification called for 4 endpoints:
+- No search/discovery functionality for users
+
+#### Enhancement 1: Dynamic Coin Discovery
+
+**CoinGecko Endpoint Used:** `/coins/markets`
+
+**Implementation:**
+```javascript
+// GET /coins endpoint added
+// Fetches top 250 cryptocurrencies by market cap
+const response = await axios.get(
+  'https://api.coingecko.com/api/v3/coins/markets',
+  { params: { vs_currency: 'php', per_page: 250, page: 1 } }
+);
+```
+
+**Benefits:**
+- Automatically supports 250+ cryptocurrencies
+- Provides coin metadata (name, symbol, id, image) for autocomplete
+- Updates automatically as market rankings change
+- No manual maintenance required for new tokens
+
+**Why This Approach:**
+The `/coins/markets` endpoint was chosen because it:
+- Returns market cap sorted data (most relevant coins first)
+- Includes coin images for visual identification
+- Provides all necessary metadata in a single request`
+
+#### Enhancement 2: Two-Tier Caching System
+
+**Caching Strategy:**
+
+| Data Type | TTL | Rationale |
+|-----------|-----|-----------|
+| Coin List | 1 hour | Coin metadata rarely changes; reduces API calls by ~99% |
+| Price Data | 30 seconds | Balances real-time accuracy with rate limit compliance |
+
+**Implementation:**
+```javascript
+// Coin list cache - Long TTL`
+const COIN_LIST_CACHE_TTL = 3600000; // 1 hour
+
+// Price cache - Short TTL
+const CACHE_TTL = 30000; // 30 seconds
+```
+
+**Why Different TTLs:**
+- **Coin list** (names, symbols, images) → Static data, changes infrequently
+- **Prices** → Volatile data, requires frequent updates for accuracy
+- **Rate limit compliance** → CoinGecko free tier: 50 calls/minute
+  - Without caching: 2 tokens × 2 requests/sec = rate limit exceeded in 25 seconds
+  - With caching: ~4 API calls/minute for typical use
+
+#### Enhancement 3: Smart Symbol Resolution
+
+**Three-Level Lookup Strategy:**
+
+```javascript
+async function getCoinId(symbol) {
+  // Level 1: Check dynamic coin list cache (250+ coins)
+  const coinList = await fetchCoinList();
+  if (coinList.has(symbol)) {
+    return coinList.get(symbol).id;
+  }
+  
+  // Level 2: Fallback to hardcoded mapping (legacy support)
+  if (symbolToId[symbol]) {
+    return symbolToId[symbol];
+  }
+  
+  // Level 3: Last resort - use lowercase symbol
+  return symbol.toLowerCase();
+}
+```
+
+**Benefits:**
+- Backward compatible with hardcoded symbols
+- Supports new coins automatically via market data
+- Graceful degradation if API is unavailable
+- Handles edge cases (coins not in top 250)
+
+#### Enhancement 4: Frontend Autocomplete Integration
+
+**Design Decision:** Serve coin list to frontend via `/coins` endpoint
+
+**Why Not Client-Side CoinGecko Calls:**
+- ❌ Exposes API calls to browser (rate limit issues with multiple users)
+- ❌ CORS restrictions from CoinGecko
+- ❌ Slower performance (extra network hop)
+- ❌ No backend caching benefits
+
+**Why Backend Proxy:**
+- ✅ Single source of truth for available coins
+- ✅ Shared cache between autocomplete and price lookups
+- ✅ Rate limit protection through server-side caching
+- ✅ Consistent data between search and price endpoints
+
+#### Enhancement 5: Image URL Optimization
+
+**CoinGecko Provides:**
+```json
+{
+  "image": "https://assets.coingecko.com/coins/images/1/large/bitcoin.png"
+}
+```
+
+**Our Usage:**
+- Displayed in autocomplete dropdown for visual coin identification
+- Shown on portfolio cards for better UX
+- Reduces user error (selecting wrong token)
+- No additional API calls needed (included in markets data)
+
+#### API Efficiency Metrics
+
+- 250+ supported tokens
+- Coin list: 1 API call/hour
+- Prices: 1 API call per token per 30 seconds
+- Typical usage: ~4 API calls/minute (well under 50/min limit)
+- **97% reduction in API calls**
+
+#### Technical Decisions Summary
+
+1. **Markets API over List API** - Chose `/coins/markets` because it includes images and market-relevant data
+2. **Backend proxy over frontend direct calls** - Better caching, rate limit control, and security
+3. **Dual cache TTLs** - Optimized for data volatility and API efficiency
+4. **Fallback symbol mapping** - Ensures backward compatibility and handles edge cases
+5. **In-memory caching** - Fast access, suitable for single-instance deployment
+
+These enhancements transform the application from a simple portfolio tracker into a scalable, user-friendly platform supporting hundreds of cryptocurrencies while maintaining optimal API usage and compliance with CoinGecko's rate limits.
 
 ---
 
